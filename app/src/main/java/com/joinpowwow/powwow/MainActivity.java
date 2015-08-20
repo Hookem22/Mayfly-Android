@@ -9,12 +9,13 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.ContactsContract;
+import android.provider.Telephony;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
+
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -33,7 +34,6 @@ import com.facebook.login.LoginResult;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 
 public class MainActivity extends FragmentActivity {
 
@@ -48,8 +48,6 @@ public class MainActivity extends FragmentActivity {
         setContentView(R.layout.activity_main);
 
         FacebookSdk.sdkInitialize(getApplicationContext());
-
-        //FetchContacts();
 
         StartGPS();
     }
@@ -116,19 +114,36 @@ public class MainActivity extends FragmentActivity {
         }
 
         @JavascriptInterface
-        public void getContacts(final String message) {
+        public void sendSMS(final String phones, final String message) {
             this.activity.runOnUiThread(new Runnable() {
 
                 @Override
                 public void run() {
-                    List<Contact> contactList = FetchContacts();
-                    String sContacts = "";
-                    for (int i = 0; i < contactList.size(); i++) {
-                        Contact contact = contactList.get(i);
-                        sContacts += contact.Name + ":";
-                        sContacts += contact.Phone + "|";
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) // At least KitKat
+                    {
+                        String defaultSmsPackageName = Telephony.Sms.getDefaultSmsPackage(getApplicationContext()); // Need to change the build to API 19
+
+                        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                        sendIntent.setType("text/plain");
+                        sendIntent.putExtra("address", phones);
+                        sendIntent.putExtra(Intent.EXTRA_TEXT, message);
+
+                        if (defaultSmsPackageName != null)// Can be null in case that there is no default, then the user would be able to choose
+                        // any app that support this intent.
+                        {
+                            sendIntent.setPackage(defaultSmsPackageName);
+                        }
+                        startActivity(sendIntent);
+
                     }
-                    webView.loadUrl("javascript:androidContactsReturn('" + sContacts + "')");
+                    else // For early versions, do what worked for you before.
+                    {
+                        Intent smsIntent = new Intent(android.content.Intent.ACTION_VIEW);
+                        smsIntent.setType("vnd.android-dir/mms-sms");
+                        smsIntent.putExtra("address", phones);
+                        smsIntent.putExtra("sms_body",message);
+                        startActivity(smsIntent);
+                    }
                 }
             });
         }
