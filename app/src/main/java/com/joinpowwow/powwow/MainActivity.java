@@ -4,22 +4,27 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.provider.ContactsContract;
 import android.provider.Telephony;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.Toast;
 
 import com.facebook.AccessToken;
@@ -30,10 +35,32 @@ import com.facebook.FacebookSdk;
 import com.facebook.login.LoginManager;
 import com.facebook.login.LoginResult;
 
-
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+
+import com.google.android.gms.gcm.GoogleCloudMessaging;
+import com.microsoft.windowsazure.mobileservices.MobileServiceClient;
+import com.microsoft.windowsazure.notifications.NotificationsManager;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends FragmentActivity {
 
@@ -41,15 +68,31 @@ public class MainActivity extends FragmentActivity {
     Boolean websiteLoaded = false;
     LocationManager locationManager;
     CallbackManager callbackManager;
+    public static final String SENDER_ID = "1014214755425";
+    public static MobileServiceClient mClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
 
         FacebookSdk.sdkInitialize(getApplicationContext());
 
         StartGPS();
+
+        try {
+            mClient = new MobileServiceClient(
+                    "https://mayflyapp.azure-mobile.net/",
+                    "NzEvHltvEcuInDmQsnXqReEIitsWIa99",
+                    this);
+
+            NotificationsManager.handleNotifications(this, SENDER_ID, MyHandler.class);
+
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+
     }
 
     public void LaunchWebsite(double lat, double lng)
@@ -67,9 +110,8 @@ public class MainActivity extends FragmentActivity {
             AccessToken accessToken = AccessToken.getCurrentAccessToken();
             String fbAccessToken = accessToken == null ? "" : accessToken.getToken();
 
-            String url = String.format("http://dev.joinpowwow.com/App?OS=Android&fbAccessToken=%s&lat=%f&lng=%f", fbAccessToken, lat, lng);
+            String url = String.format("http://dev.joinpowwow.com/App?OS=Android&fbAccessToken=%s&pushToken=%s&lat=%f&lng=%f", fbAccessToken, MyHandler.tag, lat, lng);
             webView.loadUrl(url);
-
 
             webView.addJavascriptInterface(new AppJavaScriptProxy(this, webView), "androidAppProxy");
         }
@@ -99,8 +141,6 @@ public class MainActivity extends FragmentActivity {
 
         }
     }
-
-
 
     public class AppJavaScriptProxy {
 
@@ -220,8 +260,10 @@ public class MainActivity extends FragmentActivity {
 
             Toast.makeText( getApplicationContext(), Text, Toast.LENGTH_SHORT).show();
 
-            LaunchWebsite(loc.getLatitude(), loc.getLongitude());
-            StopGPS(this);
+            if(MyHandler.tag != null && !MyHandler.tag.isEmpty()) {
+                LaunchWebsite(loc.getLatitude(), loc.getLongitude());
+                StopGPS(this);
+            }
         }
 
         @Override
