@@ -59,7 +59,7 @@ public class MyHandler extends NotificationsHandler {
 
         NotificationCompat.Builder mBuilder =
                 new NotificationCompat.Builder(ctx)
-                        .setSmallIcon(R.drawable.com_facebook_button_icon)
+                        .setSmallIcon(R.drawable.logopush)
                         .setContentTitle("Pow Wow")
                         .setStyle(new NotificationCompat.BigTextStyle()
                                 .bigText(msg))

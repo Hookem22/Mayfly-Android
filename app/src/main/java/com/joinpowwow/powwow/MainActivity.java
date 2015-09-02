@@ -4,27 +4,22 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.provider.ContactsContract;
 import android.provider.Telephony;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
-import android.util.Base64;
 import android.util.Log;
 
-import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 import android.widget.Toast;
 
 import com.facebook.AccessToken;
@@ -35,32 +30,19 @@ import com.facebook.FacebookSdk;
 import com.facebook.login.LoginManager;
 import com.facebook.login.LoginResult;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-import com.google.android.gms.gcm.GoogleCloudMessaging;
 import com.microsoft.windowsazure.mobileservices.MobileServiceClient;
 import com.microsoft.windowsazure.notifications.NotificationsManager;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.util.EntityUtils;
-import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
+
+import io.branch.referral.Branch;
+import io.branch.referral.BranchError;
+
 
 public class MainActivity extends FragmentActivity {
 
@@ -70,6 +52,9 @@ public class MainActivity extends FragmentActivity {
     CallbackManager callbackManager;
     public static final String SENDER_ID = "1014214755425";
     public static MobileServiceClient mClient;
+    private String branchEvent;
+    private double latitude;
+    private double longitude;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,6 +63,8 @@ public class MainActivity extends FragmentActivity {
         setContentView(R.layout.activity_main);
 
         FacebookSdk.sdkInitialize(getApplicationContext());
+
+        GetBranchEvent();
 
         StartGPS();
 
@@ -95,7 +82,7 @@ public class MainActivity extends FragmentActivity {
 
     }
 
-    public void LaunchWebsite(double lat, double lng)
+    public void LaunchWebsite()
     {
         if(!websiteLoaded) {
             websiteLoaded = true;
@@ -110,7 +97,9 @@ public class MainActivity extends FragmentActivity {
             AccessToken accessToken = AccessToken.getCurrentAccessToken();
             String fbAccessToken = accessToken == null ? "" : accessToken.getToken();
 
-            String url = String.format("http://dev.joinpowwow.com/App?OS=Android&fbAccessToken=%s&pushToken=%s&lat=%f&lng=%f", fbAccessToken, MyHandler.tag, lat, lng);
+            String url = String.format("http://joinpowwow.com/App?OS=Android&fbAccessToken=%s&pushDeviceToken=%s&lat=%f&lng=%f", fbAccessToken, MyHandler.tag, latitude, longitude);
+            if(branchEvent != null)
+                url = String.format("%s&goToEvent=%s", url, branchEvent);
             webView.loadUrl(url);
 
             webView.addJavascriptInterface(new AppJavaScriptProxy(this, webView), "androidAppProxy");
@@ -187,6 +176,17 @@ public class MainActivity extends FragmentActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void AndroidFacebookLogin() {
+            this.activity.runOnUiThread(new Runnable() {
+
+                @Override
+                public void run() {
+                    FacebookLogin();
+                }
+            });
+        }
     }
 
 
@@ -206,7 +206,9 @@ public class MainActivity extends FragmentActivity {
                 new FacebookCallback<LoginResult>() {
                     @Override
                     public void onSuccess(LoginResult loginResults) {
-                        Toast.makeText(getApplicationContext(), loginResults.getAccessToken().toString(), Toast.LENGTH_SHORT).show();
+                        websiteLoaded = false;
+                        LaunchWebsite();
+                        //Toast.makeText(getApplicationContext(), loginResults.getAccessToken().toString(), Toast.LENGTH_SHORT).show();
                     }
 
                     @Override
@@ -241,7 +243,7 @@ public class MainActivity extends FragmentActivity {
 
     public void StopGPS(LocationListener listener)
     {
-        Toast.makeText( getApplicationContext(), "Done", Toast.LENGTH_SHORT).show();
+        //Toast.makeText( getApplicationContext(), "Done", Toast.LENGTH_SHORT).show();
         locationManager.removeUpdates(listener);
     }
 
@@ -251,17 +253,17 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onLocationChanged(Location loc) {
 
-            loc.getLatitude();
-            loc.getLongitude();
+            latitude = loc.getLatitude();
+            longitude = loc.getLongitude();
 
             String Text = "My current location is: " +
                     "Latitude = " + loc.getLatitude() +
                     "Longitude = " + loc.getLongitude();
 
-            Toast.makeText( getApplicationContext(), Text, Toast.LENGTH_SHORT).show();
+            //Toast.makeText( getApplicationContext(), Text, Toast.LENGTH_SHORT).show();
 
             if(MyHandler.tag != null && !MyHandler.tag.isEmpty()) {
-                LaunchWebsite(loc.getLatitude(), loc.getLongitude());
+                LaunchWebsite();
                 StopGPS(this);
             }
         }
@@ -269,13 +271,13 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onProviderDisabled(String provider)
         {
-            Toast.makeText( getApplicationContext(), "GPS Disabled: Turn on GPS to Use Pow Wow", Toast.LENGTH_SHORT ).show();
+            //Toast.makeText( getApplicationContext(), "GPS Disabled: Turn on GPS to Use Pow Wow", Toast.LENGTH_SHORT ).show();
         }
 
         @Override
         public void onProviderEnabled(String provider)
         {
-            Toast.makeText( getApplicationContext(), "Gps Enabled", Toast.LENGTH_SHORT).show();
+            //Toast.makeText( getApplicationContext(), "Gps Enabled", Toast.LENGTH_SHORT).show();
         }
 
         @Override
@@ -370,5 +372,33 @@ public class MainActivity extends FragmentActivity {
         public String Phone;
     }
 
+    /////////////////
+    //Branch
+    /////////////////
+    public void GetBranchEvent()
+    {
+        Branch branch = Branch.getInstance(getApplicationContext());
+        branch.initSession(new Branch.BranchReferralInitListener() {
+            @Override
+            public void onInitFinished(JSONObject referringParams, BranchError error) {
+                if (error == null) {
+                    // params are the deep linked params associated with the link that the user clicked -> was re-directed to this app
+                    // params will be empty if no data found
+                    try
+                    {
+                        branchEvent = referringParams.getString("referenceId");
+                    }
+                    catch(Exception ex) { }
 
+                } else {
+                    Log.i("MyApp", error.getMessage());
+                }
+            }
+        }, this.getIntent().getData(), this);
+    }
+
+    @Override
+    public void onNewIntent(Intent intent) {
+        this.setIntent(intent);
+    }
 }
