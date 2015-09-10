@@ -1,9 +1,11 @@
 package com.joinpowwow.powwow;
 
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.location.Location;
 import android.location.LocationListener;
@@ -14,6 +16,7 @@ import android.provider.ContactsContract;
 import android.provider.Telephony;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import android.webkit.JavascriptInterface;
@@ -34,6 +37,7 @@ import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 import com.microsoft.windowsazure.mobileservices.MobileServiceClient;
 import com.microsoft.windowsazure.notifications.NotificationsManager;
@@ -55,6 +59,7 @@ public class MainActivity extends FragmentActivity {
     private String branchEvent;
     private double latitude;
     private double longitude;
+    private boolean latLngSent = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,9 +69,7 @@ public class MainActivity extends FragmentActivity {
 
         FacebookSdk.sdkInitialize(getApplicationContext());
 
-        GetBranchEvent();
-
-        StartGPS();
+        LaunchWebsite();
 
         try {
             mClient = new MobileServiceClient(
@@ -80,30 +83,52 @@ public class MainActivity extends FragmentActivity {
             e.printStackTrace();
         }
 
+        StartGPS();
+
+        GetBranchEvent();
+
     }
 
     public void LaunchWebsite()
     {
-        if(!websiteLoaded) {
-            websiteLoaded = true;
-            webView = (WebView) findViewById(R.id.webview);
+        webView = (WebView) findViewById(R.id.webview);
 
-            WebSettings webSettings = webView.getSettings();
-            webSettings.setJavaScriptEnabled(true);
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
 
-            WebViewClientImpl webViewClient = new WebViewClientImpl(this);
-            webView.setWebViewClient(webViewClient);
+        WebViewClientImpl webViewClient = new WebViewClientImpl(this);
+        webView.setWebViewClient(webViewClient);
 
-            AccessToken accessToken = AccessToken.getCurrentAccessToken();
-            String fbAccessToken = accessToken == null ? "" : accessToken.getToken();
+        //Facebook
+        AccessToken accessToken = AccessToken.getCurrentAccessToken();
+        String fbAccessToken = accessToken == null ? "" : accessToken.getToken();
 
-            String url = String.format("http://joinpowwow.com/App?OS=Android&fbAccessToken=%s&pushDeviceToken=%s&lat=%f&lng=%f", fbAccessToken, MyHandler.tag, latitude, longitude);
-            if(branchEvent != null)
-                url = String.format("%s&goToEvent=%s", url, branchEvent);
-            webView.loadUrl(url);
+        String deviceId = GetUuid(getApplicationContext());
 
-            webView.addJavascriptInterface(new AppJavaScriptProxy(this, webView), "androidAppProxy");
+        String url = String.format("http://joinpowwow.azurewebsites.net/App?OS=Android&fbAccessToken=%s&pushDeviceToken=%s&lat=%f&lng=%f", fbAccessToken, deviceId, latitude, longitude);
+        //if(branchEvent != null)
+        //    url = String.format("%s&goToEvent=%s", url, branchEvent);
+        webView.loadUrl(url);
+
+        webView.addJavascriptInterface(new AppJavaScriptProxy(this, webView), "androidAppProxy");
+    }
+
+    private static String uniqueID = null;
+    private static final String PUSH_TOKEN_ID = "PUSH_TOKEN_ID";
+
+    public synchronized static String GetUuid(Context context) {
+        if (uniqueID == null) {
+            SharedPreferences sharedPrefs = context.getSharedPreferences(
+                    PUSH_TOKEN_ID, Context.MODE_PRIVATE);
+            uniqueID = sharedPrefs.getString(PUSH_TOKEN_ID, null);
+            if (uniqueID == null) {
+                uniqueID = UUID.randomUUID().toString();
+                SharedPreferences.Editor editor = sharedPrefs.edit();
+                editor.putString(PUSH_TOKEN_ID, uniqueID);
+                editor.commit();
+            }
         }
+        return uniqueID;
     }
 
     public class WebViewClientImpl extends WebViewClient {
@@ -116,7 +141,7 @@ public class MainActivity extends FragmentActivity {
 
         @Override
         public boolean shouldOverrideUrlLoading(WebView webView, String url) {
-            if(url.indexOf("joinpowwow.com") > -1 ) return false;
+            if(url.indexOf("joinpowwow.azurewebsites.net") > -1 ) return false;
 
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             activity.startActivity(intent);
@@ -126,7 +151,8 @@ public class MainActivity extends FragmentActivity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
-            SendContactsToWeb();
+            //No longer inviting Friends
+            //SendContactsToWeb();
 
         }
     }
@@ -256,17 +282,29 @@ public class MainActivity extends FragmentActivity {
             latitude = loc.getLatitude();
             longitude = loc.getLongitude();
 
-            String Text = "My current location is: " +
-                    "Latitude = " + loc.getLatitude() +
-                    "Longitude = " + loc.getLongitude();
+            //String Text = "My current location is: " +
+            //        "Latitude = " + loc.getLatitude() +
+            //        "Longitude = " + loc.getLongitude();
 
             //Toast.makeText( getApplicationContext(), Text, Toast.LENGTH_SHORT).show();
 
-            if(MyHandler.tag != null && !MyHandler.tag.isEmpty()) {
-                LaunchWebsite();
+            //if(MyHandler.tag != null && !MyHandler.tag.isEmpty()) {
+                //LaunchWebsite();
+                SendLatLngToWeb();
                 StopGPS(this);
-            }
+            //}
         }
+
+        private void SendLatLngToWeb()
+        {
+            if(!latLngSent)
+            {
+                latLngSent = true;
+                webView.loadUrl("javascript:ReceiveLocation('" + latitude + "', '" + longitude + "')");
+            }
+
+        }
+
 
         @Override
         public void onProviderDisabled(String provider)
@@ -291,6 +329,7 @@ public class MainActivity extends FragmentActivity {
     ///////////////
     //Contacts
     ///////////////
+    /*
     public void SendContactsToWeb()
     {
         List<Contact> contactList = FetchContacts();
@@ -371,13 +410,13 @@ public class MainActivity extends FragmentActivity {
         public String Name;
         public String Phone;
     }
-
+    */
     /////////////////
     //Branch
     /////////////////
     public void GetBranchEvent()
     {
-        Branch branch = Branch.getInstance(getApplicationContext());
+        final Branch branch = Branch.getInstance(getApplicationContext());
         branch.initSession(new Branch.BranchReferralInitListener() {
             @Override
             public void onInitFinished(JSONObject referringParams, BranchError error) {
@@ -387,6 +426,10 @@ public class MainActivity extends FragmentActivity {
                     try
                     {
                         branchEvent = referringParams.getString("referenceId");
+                        if(branchEvent != null && branchEvent != "")
+                        {
+                            webView.loadUrl("javascript:GoToEvent('" + branchEvent + "')");
+                        }
                     }
                     catch(Exception ex) { }
 

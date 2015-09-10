@@ -4,12 +4,15 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.NotificationCompat;
+import android.telephony.TelephonyManager;
 
+import com.microsoft.windowsazure.mobileservices.authentication.MobileServiceUser;
 import com.microsoft.windowsazure.notifications.NotificationsHandler;
 
 import java.util.UUID;
@@ -21,17 +24,23 @@ public class MyHandler extends NotificationsHandler {
     private NotificationManager mNotificationManager;
     NotificationCompat.Builder builder;
     Context ctx;
+    private static final String PUSH_TOKEN_ID = "PUSH_TOKEN_ID";
 
     @Override
-    public void onRegistered(Context context,  final String gcmRegistrationId) {
+    public void onRegistered(final Context context,  final String gcmRegistrationId) {
         super.onRegistered(context, gcmRegistrationId);
 
         new AsyncTask<Void, Void, Void>() {
 
             protected Void doInBackground(Void... params) {
                 try {
-                    tag = gcmRegistrationId.replaceAll("-", "").substring(0, 32);
-                    MainActivity.mClient.getPush().register(gcmRegistrationId, new String[] { tag });
+                    SharedPreferences sharedPrefs = context.getSharedPreferences(
+                            PUSH_TOKEN_ID, Context.MODE_PRIVATE);
+                    tag = sharedPrefs.getString(PUSH_TOKEN_ID, null);
+
+                    MainActivity.mClient.getPush().unregisterAll(gcmRegistrationId);
+                    MainActivity.mClient.getPush().register(gcmRegistrationId, new String[]{tag});
+
                     return null;
                 }
                 catch(Exception e) {
