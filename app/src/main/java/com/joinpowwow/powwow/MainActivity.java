@@ -26,6 +26,7 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import com.facebook.AccessToken;
+import com.facebook.AccessTokenTracker;
 import com.facebook.CallbackManager;
 import com.facebook.FacebookCallback;
 import com.facebook.FacebookException;
@@ -54,6 +55,7 @@ public class MainActivity extends FragmentActivity {
     Boolean websiteLoaded = false;
     LocationManager locationManager;
     CallbackManager callbackManager;
+    AccessTokenTracker mFacebookAccessTokenTracker;
     public static final String SENDER_ID = "1014214755425";
     public static MobileServiceClient mClient;
     private String branchEvent;
@@ -68,8 +70,15 @@ public class MainActivity extends FragmentActivity {
         setContentView(R.layout.activity_main);
 
         FacebookSdk.sdkInitialize(getApplicationContext());
+        callbackManager = CallbackManager.Factory.create();
+        mFacebookAccessTokenTracker = new AccessTokenTracker() {
+            @Override
+            protected void onCurrentAccessTokenChanged(AccessToken oldAccessToken, AccessToken currentAccessToken) {
+                LaunchWebsite(currentAccessToken);
+            }
+        };
 
-        LaunchWebsite();
+        LaunchWebsite(null);
 
         try {
             mClient = new MobileServiceClient(
@@ -86,10 +95,9 @@ public class MainActivity extends FragmentActivity {
         StartGPS();
 
         GetBranchEvent();
-
     }
 
-    public void LaunchWebsite()
+    public void LaunchWebsite(AccessToken accessToken)
     {
         webView = (WebView) findViewById(R.id.webview);
 
@@ -100,7 +108,9 @@ public class MainActivity extends FragmentActivity {
         webView.setWebViewClient(webViewClient);
 
         //Facebook
-        AccessToken accessToken = AccessToken.getCurrentAccessToken();
+        if(accessToken == null) {
+            accessToken = AccessToken.getCurrentAccessToken();
+        }
         String fbAccessToken = accessToken == null ? "" : accessToken.getToken();
 
         String deviceId = GetUuid(getApplicationContext());
@@ -152,7 +162,7 @@ public class MainActivity extends FragmentActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             //No longer inviting Friends
-            //SendContactsToWeb();
+            SendContactsToWeb();
 
         }
     }
@@ -221,7 +231,6 @@ public class MainActivity extends FragmentActivity {
     ////////////
     public void FacebookLogin()
     {
-        callbackManager = CallbackManager.Factory.create();
 
         List<String> permissionNeeds = Arrays.asList("public_profile", "email", "user_friends");
         LoginManager.getInstance().logInWithReadPermissions(
@@ -233,7 +242,7 @@ public class MainActivity extends FragmentActivity {
                     @Override
                     public void onSuccess(LoginResult loginResults) {
                         websiteLoaded = false;
-                        LaunchWebsite();
+                        LaunchWebsite(loginResults.getAccessToken());
                         //Toast.makeText(getApplicationContext(), loginResults.getAccessToken().toString(), Toast.LENGTH_SHORT).show();
                     }
 
@@ -329,7 +338,6 @@ public class MainActivity extends FragmentActivity {
     ///////////////
     //Contacts
     ///////////////
-    /*
     public void SendContactsToWeb()
     {
         List<Contact> contactList = FetchContacts();
@@ -410,7 +418,6 @@ public class MainActivity extends FragmentActivity {
         public String Name;
         public String Phone;
     }
-    */
     /////////////////
     //Branch
     /////////////////
